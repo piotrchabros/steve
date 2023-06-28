@@ -20,9 +20,11 @@ package de.rwth.idsg.steve.repository.dto;
 
 import jooq.steve.db.tables.records.AddressRecord;
 import jooq.steve.db.tables.records.UserRecord;
+import jooq.steve.db.tables.records.CompanyRecord;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -44,5 +46,12 @@ public class User {
         private final UserRecord userRecord;
         private final AddressRecord address;
         private Optional<String> ocppIdTag;
+    }
+
+    @Getter
+    @Builder
+    public static final class Companies {
+        private final UserRecord userRecord;
+        private final List<CompanyRecord> companyRecords;
     }
 }

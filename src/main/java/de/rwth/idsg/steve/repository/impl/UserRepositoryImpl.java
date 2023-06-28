@@ -20,8 +20,11 @@ package de.rwth.idsg.steve.repository.impl;
 
 import de.rwth.idsg.steve.SteveException;
 import de.rwth.idsg.steve.repository.AddressRepository;
+import de.rwth.idsg.steve.repository.CompanyRepository;
 import de.rwth.idsg.steve.repository.UserRepository;
+import de.rwth.idsg.steve.repository.dto.CompanyDto;
 import de.rwth.idsg.steve.repository.dto.User;
+import de.rwth.idsg.steve.repository.dto.UserDto;
 import de.rwth.idsg.steve.web.dto.UserForm;
 import de.rwth.idsg.steve.web.dto.UserQueryForm;
 import jooq.steve.db.tables.records.AddressRecord;
@@ -31,6 +34,8 @@ import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.JoinType;
 import org.jooq.Record1;
+import org.jooq.Record2;
+import org.jooq.Record3;
 import org.jooq.Record7;
 import org.jooq.Result;
 import org.jooq.SelectConditionStep;
@@ -42,6 +47,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static de.rwth.idsg.steve.utils.CustomDSL.includes;
 import static jooq.steve.db.tables.OcppTag.OCPP_TAG;
@@ -55,20 +61,24 @@ import static jooq.steve.db.tables.User.USER;
 @Repository
 public class UserRepositoryImpl implements UserRepository {
 
-    @Autowired private DSLContext ctx;
-    @Autowired private AddressRepository addressRepository;
+    @Autowired
+    private DSLContext ctx;
+    @Autowired
+    private AddressRepository addressRepository;
+    @Autowired
+    private CompanyRepository companyRepository;
 
     @Override
     public List<User.Overview> getOverview(UserQueryForm form) {
         return getOverviewInternal(form)
                 .map(r -> User.Overview.builder()
-                                       .userPk(r.value1())
-                                       .ocppTagPk(r.value2())
-                                       .ocppIdTag(r.value3())
-                                       .name(r.value4() + " " + r.value5())
-                                       .phone(r.value6())
-                                       .email(r.value7())
-                                       .build()
+                        .userPk(r.value1())
+                        .ocppTagPk(r.value2())
+                        .ocppIdTag(r.value3())
+                        .name(r.value4() + " " + r.value5())
+                        .phone(r.value6())
+                        .email(r.value7())
+                        .build()
                 );
     }
 
@@ -80,8 +90,8 @@ public class UserRepositoryImpl implements UserRepository {
         // -------------------------------------------------------------------------
 
         UserRecord ur = ctx.selectFrom(USER)
-                           .where(USER.USER_PK.equal(userPk))
-                           .fetchOne();
+                .where(USER.USER_PK.equal(userPk))
+                .fetchOne();
 
         if (ur == null) {
             throw new SteveException("There is no user with id '%s'", userPk);
@@ -100,9 +110,9 @@ public class UserRepositoryImpl implements UserRepository {
         String ocppIdTag = null;
         if (ur.getOcppTagPk() != null) {
             Record1<String> record = ctx.select(OCPP_TAG.ID_TAG)
-                                        .from(OCPP_TAG)
-                                        .where(OCPP_TAG.OCPP_TAG_PK.eq(ur.getOcppTagPk()))
-                                        .fetchOne();
+                    .from(OCPP_TAG)
+                    .where(OCPP_TAG.OCPP_TAG_PK.eq(ur.getOcppTagPk()))
+                    .fetchOne();
 
             if (record != null) {
                 ocppIdTag = record.value1();
@@ -110,10 +120,25 @@ public class UserRepositoryImpl implements UserRepository {
         }
 
         return User.Details.builder()
-                           .userRecord(ur)
-                           .address(ar)
-                           .ocppIdTag(Optional.ofNullable(ocppIdTag))
-                           .build();
+                .userRecord(ur)
+                .address(ar)
+                .ocppIdTag(Optional.ofNullable(ocppIdTag))
+                .build();
+    }
+
+    @Override
+    public List<UserDto> getUserCompanies() {
+        List<UserRecord> users = ctx.selectFrom(USER).fetch();
+
+        return users.stream().map(user -> {
+            List<CompanyDto> companyRecords = this.companyRepository.getCompaniesByUserId(user.getUserPk());
+            return UserDto.builder()
+                    .id(user.getUserPk())
+                    .firstName(user.getFirstName())
+                    .lastName(user.getLastName())
+                    .companies(companyRecords)
+                    .build();
+        }).collect(Collectors.toList());
     }
 
     @Override
@@ -204,28 +229,28 @@ public class UserRepositoryImpl implements UserRepository {
 
     private SelectConditionStep<Record1<Integer>> selectAddressId(int userPk) {
         return ctx.select(USER.ADDRESS_PK)
-                  .from(USER)
-                  .where(USER.USER_PK.eq(userPk));
+                .from(USER)
+                .where(USER.USER_PK.eq(userPk));
     }
 
     private SelectConditionStep<Record1<Integer>> selectOcppTagPk(String ocppIdTag) {
         return ctx.select(OCPP_TAG.OCPP_TAG_PK)
-                  .from(OCPP_TAG)
-                  .where(OCPP_TAG.ID_TAG.eq(ocppIdTag));
+                .from(OCPP_TAG)
+                .where(OCPP_TAG.ID_TAG.eq(ocppIdTag));
     }
 
     private void addInternal(DSLContext ctx, UserForm form, Integer addressPk) {
         int count = ctx.insertInto(USER)
-                       .set(USER.FIRST_NAME, form.getFirstName())
-                       .set(USER.LAST_NAME, form.getLastName())
-                       .set(USER.BIRTH_DAY, form.getBirthDay())
-                       .set(USER.SEX, form.getSex().getDatabaseValue())
-                       .set(USER.PHONE, form.getPhone())
-                       .set(USER.E_MAIL, form.getEMail())
-                       .set(USER.NOTE, form.getNote())
-                       .set(USER.ADDRESS_PK, addressPk)
-                       .set(USER.OCPP_TAG_PK, selectOcppTagPk(form.getOcppIdTag()))
-                       .execute();
+                .set(USER.FIRST_NAME, form.getFirstName())
+                .set(USER.LAST_NAME, form.getLastName())
+                .set(USER.BIRTH_DAY, form.getBirthDay())
+                .set(USER.SEX, form.getSex().getDatabaseValue())
+                .set(USER.PHONE, form.getPhone())
+                .set(USER.E_MAIL, form.getEMail())
+                .set(USER.NOTE, form.getNote())
+                .set(USER.ADDRESS_PK, addressPk)
+                .set(USER.OCPP_TAG_PK, selectOcppTagPk(form.getOcppIdTag()))
+                .execute();
 
         if (count != 1) {
             throw new SteveException("Failed to insert the user");
@@ -234,22 +259,22 @@ public class UserRepositoryImpl implements UserRepository {
 
     private void updateInternal(DSLContext ctx, UserForm form, Integer addressPk) {
         ctx.update(USER)
-           .set(USER.FIRST_NAME, form.getFirstName())
-           .set(USER.LAST_NAME, form.getLastName())
-           .set(USER.BIRTH_DAY, form.getBirthDay())
-           .set(USER.SEX, form.getSex().getDatabaseValue())
-           .set(USER.PHONE, form.getPhone())
-           .set(USER.E_MAIL, form.getEMail())
-           .set(USER.NOTE, form.getNote())
-           .set(USER.ADDRESS_PK, addressPk)
-           .set(USER.OCPP_TAG_PK, selectOcppTagPk(form.getOcppIdTag()))
-           .where(USER.USER_PK.eq(form.getUserPk()))
-           .execute();
+                .set(USER.FIRST_NAME, form.getFirstName())
+                .set(USER.LAST_NAME, form.getLastName())
+                .set(USER.BIRTH_DAY, form.getBirthDay())
+                .set(USER.SEX, form.getSex().getDatabaseValue())
+                .set(USER.PHONE, form.getPhone())
+                .set(USER.E_MAIL, form.getEMail())
+                .set(USER.NOTE, form.getNote())
+                .set(USER.ADDRESS_PK, addressPk)
+                .set(USER.OCPP_TAG_PK, selectOcppTagPk(form.getOcppIdTag()))
+                .where(USER.USER_PK.eq(form.getUserPk()))
+                .execute();
     }
 
     private void deleteInternal(DSLContext ctx, int userPk) {
         ctx.delete(USER)
-           .where(USER.USER_PK.equal(userPk))
-           .execute();
+                .where(USER.USER_PK.equal(userPk))
+                .execute();
     }
 }
